@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FAT LIAM</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background-color: #f0f0f0;
+      text-align: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      margin: 20px auto;
+      border: 3px solid #333;
+      background-color: #d6f9ff;
+      z-index: 1;
+      position: relative;
+    }
+
+    .overlay-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(75, 223, 207, 0.9);
+      z-index: 10;
+      visibility: hidden;
+    }
+
+    .start-btn,
+    .restart-btn {
+      padding: 15px 30px;
+      font-size: 20px;
+      background-color: #FF0202;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 15px;
+      border-radius: 8px;
+      transition: background-color 0.3s;
+    }
+
+    .start-btn:hover,
+    .restart-btn:hover {
+      background-color: #45a049;
+    }
+
+    h1 {
+      font-size: 2em;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loadingScreen" class="overlay-screen" style="visibility: visible;">
+    <h1>Loading Liam’s Fatass…</h1>
+  </div>
+
+  <!-- Title Screen -->
+  <div id="titleScreen" class="overlay-screen" style="visibility: hidden;">
+    <h1>LIAM IS SOOOO HUNGRY</h1>
+    <p>Can you help fatten him up?</p>
+    <img src="images/cropliam.png" alt="Hungry Liam" width="200">
+    <button id="startButton" class="start-btn">Let’s Eat!</button>
+  </div>
+
+  <!-- Victory Screen -->
+  <div id="victoryScreen" class="overlay-screen" style="visibility: hidden;">
+    <h1>LIAM IS SATISFIED</h1>
+    <img src="images/fatliam.png" alt="Full Liam" width="200">
+    <button id="restartButton" class="restart-btn">Still Hungry?</button>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameOverScreen" class="overlay-screen" style="visibility: hidden;">
+    <h1>LIAM DIED OF STARVATION</h1>
+    <img src="images/thinliam.png" alt="Starved Liam" width="200" style="margin: 15px 0;">
+    <button id="restartButton2" class="restart-btn">Resurrect</button>
+  </div>
+
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas" width="600" height="600" style="visibility: visible;"></canvas>
+
+  <!-- Audio -->
+  <audio id="bgMusic" src="audio/music.mp3" loop></audio>
+  <audio id="eatSound" src="audio/eat.mp3"></audio>
+  <audio id="badEatSound" src="audio/bad.mp3"></audio>
+  <audio id="gameOverSound" src="audio/gameover.mp3"></audio>
+  <audio id="victorySound" src="audio/victory.mp3"></audio>
+
+  <script>
+    window.onload = () => {
+      setTimeout(() => {
+        document.getElementById('loadingScreen').style.visibility = 'hidden';
+        document.getElementById('titleScreen').style.visibility = 'visible';
+      }, 2000);
+    };
+
+    const badFoodImg = new Image();
+    badFoodImg.src = 'images/veggie.png';
+
+    const foodImg = new Image();
+    foodImg.src = 'images/burger.png';
+
+    const playerImg = new Image();
+    playerImg.src = 'images/openliam.png';
+
+    const titleScreen = document.getElementById('titleScreen');
+    const startButton = document.getElementById('startButton');
+    const victoryScreen = document.getElementById('victoryScreen');
+    const restartButton = document.getElementById('restartButton');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const restartButton2 = document.getElementById('restartButton2');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Audio elements
+    const eatSound      = document.getElementById('eatSound');
+    const badEatSound   = document.getElementById('badEatSound');
+    const gameOverSound = document.getElementById('gameOverSound');
+    const victorySound  = document.getElementById('victorySound');
+    const bgMusic       = document.getElementById('bgMusic');
+
+    // Volume settings
+    eatSound.volume      = 0.8;  
+    badEatSound.volume   = 0.7;  
+    gameOverSound.volume = 0.9;  
+    victorySound.volume  = 1.0;  
+    bgMusic.volume       = 0.3;  
+
+    const player = {
+      x: canvas.width / 2,
+      y: canvas.height - 75,
+      width: 90,
+      height: 90,
+    };
+
+    let foodItems = [];
+    let score = 0;
+    let mouseX = player.x;
+    let gameStarted = false;
+    let gameOver = false;
+    let spawnInterval;
+    let strikes = 0;
+    let animationId = null;
+    window._gameLoopStarted = false;
+
+    startButton.addEventListener('click', () => {
+      titleScreen.style.visibility = 'hidden';
+      initGame();
+    });
+
+    restartButton.addEventListener('click', () => {
+      victoryScreen.style.visibility = 'hidden';
+      initGame();
+    });
+
+    restartButton2.addEventListener('click', () => {
+      gameOverScreen.style.visibility = 'hidden';
+      initGame();
+    });
+
+    function initGame() {
+      foodItems = [];
+      score = 0;
+      strikes = 0;
+      gameStarted = true;
+      gameOver = false;
+      clearInterval(spawnInterval);
+      spawnInterval = setInterval(spawnFood, 800);
+      bgMusic.play();
+
+      if (!window._gameLoopStarted) {
+        window._gameLoopStarted = true;
+        animationId = requestAnimationFrame(gameLoop);
+      }
+    }
+
+    function spawnFood() {
+      const size = 60;
+      const isBad = Math.random() < 0.2;
+
+      foodItems.push({
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        size: size,
+        speed: 2 + Math.random() * 3,
+        isBad: isBad
+      });
+    }
+
+    function update() {
+      if (!gameStarted || gameOver) return;
+
+      player.x = mouseX - player.width / 2;
+
+      foodItems = foodItems.filter((food) => {
+        food.y += food.speed;
+
+        const hitboxPadding = 20;
+
+        const hitbox = {
+          x: player.x + hitboxPadding,
+          y: player.y + hitboxPadding,
+          width: player.width - 2 * hitboxPadding,
+          height: player.height - 2 * hitboxPadding
+        };
+
+        const caught =
+          food.x < hitbox.x + hitbox.width &&
+          food.x + food.size > hitbox.x &&
+          food.y < hitbox.y + hitbox.height &&
+          food.y + food.size > hitbox.y;
+
+        if (caught) {
+          if (food.isBad) {
+            strikes++;
+            badEatSound.play();
+            if (strikes >= 3) showGameOver();
+          } else {
+            score++;
+            eatSound.play();
+            if (score === 25) showVictory();
+          }
+          return false;
+        }
+
+        return food.y <= canvas.height;
+      });
+    }
+
+    function draw() {
+      ctx.fillStyle = 'skyblue';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (gameStarted && !gameOver) {
+        ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+        foodItems.forEach((food) => {
+          const img = food.isBad ? badFoodImg : foodImg;
+          ctx.drawImage(img, food.x, food.y, food.size, food.size);
+        });
+
+        ctx.fillStyle = 'red';
+        ctx.font = '25px Arial';
+        ctx.fillText('Score: ' + score, 10, 30);
+        ctx.fillStyle = 'black';
+        ctx.font = '20px Arial';
+        ctx.fillText('Strikes: ' + strikes + ' / 3', 10, 60);
+      }
+    }
+
+    function showVictory() {
+      gameOver = true;
+      gameStarted = false;
+      clearInterval(spawnInterval);
+      cancelAnimationFrame(animationId);
+      victoryScreen.style.visibility = 'visible';
+      bgMusic.pause();
+      victorySound.play();
+    }
+
+    function showGameOver() {
+      gameOver = true;
+      gameStarted = false;
+      clearInterval(spawnInterval);
+      cancelAnimationFrame(animationId);
+      gameOverScreen.style.visibility = 'visible';
+      bgMusic.pause();
+      gameOverSound.play();
+    }
+
+    function gameLoop() {
+      if (!gameStarted || gameOver) {
+        window._gameLoopStarted = false;
+        cancelAnimationFrame(animationId);
+        return;
+      }
+
+      update();
+      draw();
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+    });
+  </script>
+</body>
+</html>
+
